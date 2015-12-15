@@ -1,4 +1,6 @@
 /* Arduino code for MAS.S65 Science Fiction Fabrication Class, Fall 2015
+ * Daniel Fitzgerald
+ * 
  * The project has two parts: 
  *  1) A head-mounted 2-DOF laser pointer gimbal linked to a head-worn gaze tracker.
  *  The laser points where the user is looking
