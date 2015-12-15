@@ -20,6 +20,9 @@
 
 #include <Servo.h>
 
+// For manual calibration with a potentiometer
+//#define potPin A0
+
 // ############################################## SHOULDER TURRET ##############################################
 
 // Shoulder turret pins
@@ -27,16 +30,18 @@
 #define TURRET_GLOW_PIN 3 //Blue
 #define TURRET_LASER_PIN 4//Green
 #define TURRET_YAW_PIN 6  //Orange
+//#define TURRET_YAW_INVERTED
 #define TURRET_PITCH_PIN 5//Yellow
+//#define TURRET_PITCH_INVERTED
 Servo turretYawServo;
 Servo turretPitchServo;
 
 // Shoulder turret constants
 #define TURRET_YAW_MIN 0
-#define TURRET_YAW_CENTER 97
+#define TURRET_YAW_CENTER 98
 #define TURRET_YAW_MAX 140
 #define TURRET_PITCH_MIN 40
-#define TURRET_PITCH_CENTER 95
+#define TURRET_PITCH_CENTER 96
 #define TURRET_PITCH_MAX 110 
 
 void setupTurret(){
@@ -99,7 +104,7 @@ void turret_fade_out(){
 }
 
 // Takes yaw/pitch coordinates in turret reference frame, constrains them within turrent safe range, and aims at that position
-void turret_aim(int yaw, int pitch){
+inline void turret_go_to(int yaw, int pitch){
   Serial.print("Turret aim (");
   Serial.print(yaw);
   Serial.print(", ");
@@ -120,11 +125,18 @@ void turret_aim(int yaw, int pitch){
 }
 
 // Aim function relative to "true" (camera) turret coorinates where (0,0) is center
-void turret_aim_calibrated(int yaw, int pitch){
+void turret_aim(int yaw, int pitch){
+  #ifdef TURRET_YAW_INVERTED
+    yaw = -yaw;
+  #endif
+  #ifdef TURRET_PITCH_INVERTED
+    pitch = -pitch;
+  #endif
+  
   yaw += TURRET_YAW_CENTER;
   pitch += TURRET_PITCH_CENTER;
 
-  turret_aim(yaw, pitch);
+  turret_go_to(yaw, pitch);
 }
 
 void testTurret(){
@@ -137,17 +149,22 @@ void testTurret(){
   turret_laser_on();
   
   #define turret_wait_time 2000
-  turret_aim(45,90);
+  turret_aim(0,0); 
   delay(turret_wait_time);
-  turret_aim(45, 135);
+  
+  turret_aim(-45,0);
   delay(turret_wait_time);
-  turret_aim(90, 90);
+  turret_aim(45, 0);
   delay(turret_wait_time);
-  turret_aim(90, 45);
+
+  turret_aim(0,0); 
   delay(turret_wait_time);
-  turret_aim(90, 135);
+  
+  turret_aim(0, -45);
   delay(turret_wait_time);
-  turret_aim(90,90);
+  turret_aim(0, 45);
+  delay(turret_wait_time);
+  turret_aim(0, 0);
   delay(turret_wait_time);
 
   turret_fire();
@@ -157,20 +174,22 @@ void testTurret(){
 
 // ############################################## HEAD LASER GIMBAL ##############################################
 
-// Head laswer pins
+// Head laser pins
 #define GIMBAL_LASER_PIN 7
-#define GIMBAL_YAW_PIN 8
-#define GIMBAL_PITCH_PIN 12
+#define GIMBAL_YAW_PIN 12
+#define GIMBAL_YAW_INVERTED
+#define GIMBAL_PITCH_PIN 8
+#define GIMBAL_PITCH_INVERTED
 Servo gimbalYawServo;
 Servo gimbalPitchServo;
 
 // Head laser gimbal constants
-#define GIMBAL_YAW_MIN 45
-#define GIMBAL_YAW_CENTER 90
-#define GIMBAL_YAW_MAX 135
-#define GIMBAL_PITCH_MIN 45
-#define GIMBAL_PITCH_CENTER 90
-#define GIMBAL_PITCH_MAX 135 
+#define GIMBAL_YAW_CENTER 91
+const unsigned short GIMBAL_YAW_MIN = GIMBAL_YAW_CENTER - 45;//#define GIMBAL_YAW_MIN 45
+const unsigned short GIMBAL_YAW_MAX = GIMBAL_YAW_CENTER + 45;//#define GIMBAL_YAW_MAX 135
+#define GIMBAL_PITCH_CENTER 102
+const unsigned short GIMBAL_PITCH_MIN = GIMBAL_YAW_CENTER - 45;//#define GIMBAL_PITCH_MIN 45
+const unsigned short GIMBAL_PITCH_MAX = GIMBAL_YAW_CENTER + 45;//#define GIMBAL_PITCH_MAX 135 
 
 void setupGimbal(){
   // First TURN OFF THE LASER!
@@ -195,8 +214,8 @@ void gimbal_laser_off(){
   digitalWrite(GIMBAL_LASER_PIN, LOW);
 }
 
-// Takes yaw/pitch coordinates in turret reference frame, constrains them within turrent safe range, and aims at that position
-void gimbal_aim(int yaw, int pitch){
+// Takes yaw/pitch coordinates in gimbal reference frame, constrains them within turrent safe range, and aims at that position
+inline void gimbal_go_to(int yaw, int pitch){
   Serial.print("Gimbal aim (");
   Serial.print(yaw);
   Serial.print(", ");
@@ -216,24 +235,44 @@ void gimbal_aim(int yaw, int pitch){
   gimbalPitchServo.write(pitch);
 }
 
+// Laser Gimbal aim function relative to "true" (head) coorinates where (0,0) is center
+void gimbal_aim(int yaw, int pitch){
+  #ifdef GIMBAL_YAW_INVERTED
+    yaw = -yaw;
+  #endif
+  #ifdef GIMBAL_PITCH_INVERTED
+    pitch = -pitch;
+  #endif
+  
+  yaw += GIMBAL_YAW_CENTER;
+  pitch += GIMBAL_PITCH_CENTER;
+
+  gimbal_go_to(yaw, pitch);
+}
+
 void testGimbal(){
   Serial.println("TEST GIMBAL");
 
   gimbal_laser_on();
   
   #define gimbal_wait_time 2000
-  gimbal_aim(45,90);
-  delay(gimbal_wait_time);
-  gimbal_aim(45, 135);
-  delay(gimbal_wait_time);
-  gimbal_aim(90, 90);
-  delay(gimbal_wait_time);
-  gimbal_aim(90, 45);
-  delay(gimbal_wait_time);
-  gimbal_aim(90, 135);
-  delay(gimbal_wait_time);
-  gimbal_aim(90,90);
-  delay(gimbal_wait_time);
+  gimbal_aim(0,0); 
+  delay(turret_wait_time);
+  
+  gimbal_aim(-45,0);
+  delay(turret_wait_time);
+  gimbal_aim(45, 0);
+  delay(turret_wait_time);
+
+  gimbal_aim(0,0); 
+  delay(turret_wait_time);
+  
+  gimbal_aim(0, -45);
+  delay(turret_wait_time);
+  gimbal_aim(0, 45);
+  delay(turret_wait_time);
+  gimbal_aim(0, 0);
+  delay(turret_wait_time);
 
   gimbal_laser_off();
 }
@@ -247,8 +286,8 @@ void testGimbal(){
 
 // LASER GIMBAL COMMANDS
 #define GIMBAL_COMMAND_FRAME_START 'G'
-#define GIMBAL_LASERON_MESSAGE_INDICTOR 'O'
-#define GIMBAL_LASEROFF_MESSAGE_INDICTOR 'F'
+#define GIMBAL_LASERON_MESSAGE_INDICTOR 'L'
+#define GIMBAL_LASEROFF_MESSAGE_INDICTOR 'l'
 #define GIMBAL_AIM_MESSAGE_INDICATOR 'A'
 
 inline boolean isValidCommandFrameStart(char a){
@@ -306,12 +345,12 @@ inline void parseTurretCommand(){
     
     short turretYaw, turretPitch;
     parseCoordinates(&turretYaw, &turretPitch);
-    turret_aim_calibrated(turretYaw, turretPitch);  
+    turret_aim(turretYaw, turretPitch);  
     
   } // Possible other types of turret messages
 }
 
-inline void parseLaserCommand(){
+inline void parseGimbalCommand(){
   Serial.read(); // clear the laser command frame start byte
   numBytesAvailable = Serial.available();
   Serial.println("Parsing laser command...");
@@ -338,7 +377,7 @@ inline void parseLaserCommand(){
     
     short laserYaw, laserPitch;
     parseCoordinates(&laserYaw, &laserPitch);
-    turret_aim_calibrated(laserYaw, laserPitch);  
+    gimbal_aim(laserYaw, laserPitch);  
     
   } // Possible other types of laser messages
 }
@@ -356,7 +395,7 @@ inline void processSerialMessages(){
 
     // if we received a laser command  
     }else if (Serial.peek() == GIMBAL_COMMAND_FRAME_START){
-      parseLaserCommand();
+      parseGimbalCommand();
     }
     
   } // end check available bytes
@@ -368,14 +407,31 @@ void setup() {
   Serial.begin(115200);
   setupTurret();
   setupGimbal();
+
+  Serial.println("LASER GIMBAL ACTIVATED");
+  gimbal_aim(0,0);
   
   Serial.println("TURRET ACTIVATED");
-  turret_aim_calibrated(0,0);
+  turret_aim(0,0);
   turret_fade_in();
 
-  testGimbal();
+  #ifdef potPin
+    pinMode(potPin, INPUT);
+    gimbal_laser_on();
+    turret_laser_on();
+  #endif
+
+  //testGimbal();
+  //delay(2000);
+  //testTurret();
 }
 
 void loop() {
-  processSerialMessages();
+  #ifdef potPin
+    int val = map(analogRead(potPin), 0, 1023, 0, 360);
+    Serial.println(val);
+    turret_go_to(TURRET_YAW_CENTER, val);
+  #else
+    processSerialMessages();
+  #endif
 }

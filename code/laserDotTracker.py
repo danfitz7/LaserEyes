@@ -24,7 +24,12 @@ import struct # for packing bits
 import zmq    # thingy for sockets
 
 
-# Global calibration vars
+# Pupil Calibration values (Use these in PupilCapture
+# "Pupil Intensity Range" = 20
+# Pupil min" = 40.0
+#Pupil max" = 100
+
+# Laser gimbal calibration vars
 yawRange = 55
 maxPitch = 37
 minPitch = -37
@@ -94,8 +99,16 @@ def getTurretAngleForPupilPos(pupil_pos):
 
 ######################################################## GIMBAL INTERFACE ########################################################
 
-# Sends a turret aim command: "TAYYPP" where YY is the yaw and PP is the pitch (both 2-byte signed shorts)
+gimbalLaserOn = False 3 Keep track of the laser state
+
+# Messaging protocol for the laser gimbal. These should match the corresponding variables in the Arduino sketch
+GIMBAL_COMMAND_FRAME_START = 'G'
+GIMBAL_LASERON_MESSAGE_INDICATOR = 'L'
+GIMBAL_LASEROFF_MESSAGE_INDICATOR = 'l'
+GIMBAL_AIM_MESSAGE_INDICATOR = 'A'
 GIMBAL_AIM_MESSAGE_DATA_LENGTH = 4
+
+# Sends a turret aim command: "TAYYPP" where YY is the yaw and PP is the pitch (both 2-byte signed shorts)
 def gibal_aim(yaw, pitch):
     print "SEND GIMBAL AIM (", yaw, ",", pitch, ")"
 
@@ -104,29 +117,35 @@ def gibal_aim(yaw, pitch):
 
     print "Y", yaw, "->", int(ord(yawBytes[0])), int(ord(yawBytes[1])), "\tP",pitch, "->", int(ord(pitchBytes[0])) , int(ord(pitchBytes[1]))  
 
-    message = bytearray(['G', 'A'])
+    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_AIM_MESSAGE_INDICATOR])
     message.extend(yawBytes)
     message.extend(pitchBytes)
 
     if (ser.write(message) != 2 + TURRET_AIM_MESSAGE_DATA_LENGTH):
         print "ERROR: GImbal aim message wrong size!"
 
+    # Turn the laser on if it was off from blinking
+    if (!gimbalLaserOn){
+        gimbal_laser_on();
+
 # Sends the Gimbal Laser-ON command: "GO" (GImbal ON)
 def gimbal_laser_on():
     print "SEND GIMBAL LASER ON!"
 
-    message = bytearray(['G', 'O'])
+    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASEROFF_MESSAGE_INDICATOR])
     if (ser.write(message) != 2):
         print "ERROR: Gimbal laser-on message wrong size!"
+    gimbalLaserOn = True
 
 # Sends the Gimbal Laser-ON command: "GO" (GImbal ON)
 def gimbal_laser_off():
     print "SEND GIMBAL LASER ON!"
 
-    message = bytearray(['G', 'F'])
+    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASERON_MESSAGE_INDICATOR])
     if (ser.write(message) != 2):
         print "ERROR: Gimbal laser-off message wrong size!"
-
+    gimbalLaserOn = False
+        
 def testGimbal():
     # quick test
     print "TESTING TURRET"
@@ -145,29 +164,14 @@ def testGimbal():
 
 ######################################################## GIMBAL MAPPING AND CALIBRATION ########################################################
 
-
-def laserTrackPupil(pupil_pos):
-    turret_pos = getTurretAngleForPupilPos(pupil_pos)
-    sendLaserTurretPosition(turret_pos)
-
 # What to do when the user blinks
+# TODO: detect a certain time of blinking and activate the turret firing
+# NOTE that this is the only intersection of the otherwise seperate laser gimbal and shoulder turret systems
 def blink():
     print "BLINK!"
+    gimbal_laser_off();
 
-# Pupil frames contain the x and y position of the pupil. This is the space we map from
-def handlePupilFrame(pupilPosStr):
-    x, y = map(float, pupilPosStr.strip('()').split(','))
-    print "PUPIL (", x, ", ", y, ")"
-    if (x==0.0 and y==0.0):
-        blink()
-    else:
-        laserTrackPupil((x,y))
-# We don't really care about gazes
-def handleGazeFrame(gazePosStr, conf):
-    norm_x, norm_y = map(float, gazePosStr.strip('()').split(','))
-    print "GAZE AT: (", norm_x, ", ", norm_y, ") P(", conf, ")"
-
-# Get the next message from the pupil server
+#get the next pupil message
 def getNextMessage():
     msg = socket.recv()
     items = msg.split("\n") 
@@ -175,10 +179,30 @@ def getNextMessage():
     items = dict([i.split(':',1) for i in items[:-1] ])
     return msg_type, items
 
+# This is meant to be called in an infinite loop
+def processPupilMessagesLoop():
+    msg_type, items = getNextMessage();
+
+    print "\n"
+    if msg_type == 'Pupil':
+        try:
+            #print "Pupil:\nnorm_pos:\t%s\ndiameter:\t%s" %(items['norm_pos'], items['diameter'])
+            pupilPosStr = items['norm_pos']
+            x, y = map(float, pupilPosStr.strip('()').split(','))
+            print "PUPIL (", x, ", ", y, ")"
+            if (x==0.0 and y==0.0):
+                blink()
+            else:
+                turret_pos = getTurretAngleForPupilPos(pupil_pos)
+                sendLaserTurretPosition(turret_pos)
+        except KeyError:
+            pass
+
+
 # get the next pupil position from the next pupil-specific message
 def getNextPupilPos():
 
-    # Get the items data from the next "Pupil" message (ass opposed to "Gaze" messages)
+    # Get the items data from the next "Pupil" message (as opposed to "Gaze" messages)
     msg_type, items = getNextMessage()
     while (msg_type != "Pupil"):
         msg_type, items = getNextMessage()
@@ -249,7 +273,14 @@ def calibrate():
 ######################################################## TURRET CONTROL ########################################################
 
 # Sends a turret aim command: "TAYYPP" where YY is the yaw and PP is the pitch (both 2-byte signed shorts)
+
+        
+# Messaging protocol for the shoulder turret. These should match the corresponding variables in the Arduino sketch
+TURRET_COMMAND_FRAME_START = 'T'
+TURRET_FIRE_MESSAGE_INDICATOR = 'F'
+TURRET_AIM_MESSAGE_INDICATOR = 'A'
 TURRET_AIM_MESSAGE_DATA_LENGTH = 4
+
 def turret_aim(yaw, pitch):
     print "SEND TURRET AIM (", yaw, ",", pitch, ")"
 
@@ -261,7 +292,7 @@ def turret_aim(yaw, pitch):
 
     print "Y", yaw, "->", int(ord(yawBytes[0])), int(ord(yawBytes[1])), "\tP",pitch, "->", int(ord(pitchBytes[0])) , int(ord(pitchBytes[1]))  
 
-    message = bytearray(['T', 'A'])
+    message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_AIM_MESSAGE_INDICATOR])
     message.extend(yawBytes)
     message.extend(pitchBytes)
     #print "Raw message: " , message
@@ -273,7 +304,7 @@ def turret_aim(yaw, pitch):
 def turret_fire():
     print "SEND TURRET FIRE!"
 
-    message = bytearray(['T', 'F'])
+    message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_FIRE_MESSAGE_INDICATOR])
     if (ser.write(message) != 2):
         print "ERROR: Turret fire message wrong size!"
 
@@ -311,6 +342,7 @@ def test_turret():
     checkup()
 
 ######################################################## MAIN PROGRAM ########################################################
+
 # Serial setup for arduino
 arduino_port = '/dev/cu.usbmodem14131'
 ser = serial.Serial(arduino_port, timeout=None, baudrate=115200) # Establish the connection on a specific port
