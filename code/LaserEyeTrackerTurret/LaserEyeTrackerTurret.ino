@@ -1,11 +1,21 @@
 /* Arduino code for MAS.S65 Science Fiction Fabrication Class, Fall 2015
- * Thro project has two parts: 
+ * The project has two parts: 
  *  1) A head-mounted 2-DOF laser pointer gimbal linked to a head-worn gaze tracker.
  *  The laser points where the user is looking
  *  
  *  2) A Shoulder-mounted laser-tracking nerf turret. The turret shoots where the laser points.
  *  This turret can also be mounted on a standard camera tripod and used as an automatic laser-guided sentry turret.
+ *
+ *
+ * TODO
+ * - Use Servo.microseconds() instead of aiming with angles (more precise, higher resolution, probably faster)
+ * Needs custom calibration per servo type.
+ * - Add timer interrupts. When a fire command is encountered, turn on the gun and start an interrupt to trigger TURRET_FIRE_TIME later
+ * When the interrupt trggers, turn the gun off and dissable the interrupt.
+ * This way, the turret can keep tracking as it's firing.
+ * - Do the same for fade in/out
  */
+
 
 #include <Servo.h>
 
@@ -98,6 +108,12 @@ void turret_aim(int yaw, int pitch){
 
   yaw = constrain(yaw, TURRET_YAW_MIN, TURRET_YAW_MAX);
   pitch = constrain(pitch, TURRET_PITCH_MIN, TURRET_PITCH_MAX);
+
+  Serial.print("Turret at (");
+  Serial.print(yaw);
+  Serial.print(", ");
+  Serial.print(pitch);
+  Serial.println(")");
   
   turretYawServo.write(yaw);
   turretPitchServo.write(pitch);
@@ -140,28 +156,70 @@ void testTurret(){
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   setupTurret();
   
   Serial.println("TURRET ACTIVATED");
+  turret_aim_calibrated(0,0);
   turret_fade_in();
 }
 
 // Serial communication
 #define TURRET_COMMAND_FRAME_START 'T'
+#define TURRET_FIRE_MESSAGE_INDICTOR 'F'
+#define TURRET_AIM_MESSAGE_INDICATOR 'A'
+#define TURRET_AIM_MESSAGE_DATA_LENGTH 4
 int numBytesAvailable = 0;
+
+// Packs the next 4 bytes in the Serial buffer in to 2 shorts (2-bytes each)
+// WARNING: This should only be called if there are actually at-least 4 bytes in the buffer (Serial.available() >= 4 has just been verified)
+void parseCoordinates(short* pitch, short* yaw){
+  
+  // Parse four bytes (2 ints, 2 bytes each)
+  byte firstByte = Serial.read();
+  byte secondByte= Serial.read();
+  byte thirdByte = Serial.read();
+  byte fourthByte= Serial.read();
+
+  // This accomplishes bit shifting to reconstruct the 2-byte shirts
+  short firstNum = firstByte * 256 + secondByte; // Yaw
+  short secondNum = thirdByte * 256 + fourthByte;// Pitch
+
+  *pitch = firstNum;
+  *yaw = secondNum;
+}
+
 void loop() {
 
   // If there are more than 3 bytes available
   numBytesAvailable = Serial.available();
-  if (numBytesAvailable >= 5){
-    // get to the start of the next command
-    while (Serial.peek() != TURRET_COMMAND_FRAME_START && numBytesAvailable >= 3){
-      Serial.read();
+  if (numBytesAvailable >= 1){
+
+    // if we're receiveing a turret command
+    if (Serial.peek() == TURRET_COMMAND_FRAME_START){
+      serial.read(); // clear the turret command frame start
       numBytesAvailable = Serial.available();
-    }
+
+      // Fire command
+      if (Serial.peek() == TURRET_FIRE_MESSAGE_INDICTOR && numBytesAvailable >= 1){
+        Serial.println("TURRET FIRE COMMAND");
+        Serial.read(); // Read the TURRET_FIRE_MESSAGE_INDICTOR
+        turret_fire();
+
+      // Aim command  
+      }else if (Serial.peek() == TURRET_AIM_MESSAGE_INDICATOR && numBytesAvailable >= TURRET_AIM_MESSAGE_DATA_LENGTH){
+        Serial.println("TURRET AIM COMMAND");
+
+        short turretYaw, turretPitch;
+        parseCoordinates(&turretYaw, &turretPitch);
+        turret_aim_calibrated(turretYaw, turretPitch);  
+          
+      } // Possible other types of commands
+      
+    }// else if (Serial.peek() == LASER_COMMAND_FRAME_START
+     // TODO: laser command parsing here
+
 
     
-    
-  }
+  } // end check available bytes
 }
