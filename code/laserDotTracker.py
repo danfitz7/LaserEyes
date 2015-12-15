@@ -13,6 +13,7 @@ def map_ranges(val, from_a, from_b, to_a, to_b):
 ser = serial.Serial(arduino_port, timeout=None, baudrate=115200) # Establish the connection on a specific port
 
 # Sends a turret aim command: "TAYYPP" where YY is the yaw and PP is the pitch (both 2-byte signed shorts)
+TURRET_AIM_MESSAGE_DATA_LENGTH = 4
 def turret_aim(yaw, pitch):
     print "SEND TURRET AIM (", yaw, ",", pitch, ")"
 
@@ -29,7 +30,7 @@ def turret_aim(yaw, pitch):
     message.extend(pitchBytes)
     #print "Raw message: " , message
 
-    if (ser.write(message) != 5):
+    if (ser.write(message) != 2 + TURRET_AIM_MESSAGE_DATA_LENGTH):
         print "ERROR: Turret aim message wrong size!"
 
 # Sends the Turret Fire command: "TF" (Turret Fire)
@@ -41,13 +42,13 @@ def turret_fire():
         print "ERROR: Turret fire message wrong size!"
 
 # Prints serial messages from arduino and waits a specific time (usually for the turret to aim somewhere or fire)
+sleepTime = 2
 def checkup():
+    time.sleep(sleepTime)
     bytesToRead = ser.inWaiting()
     received = ser.read(bytesToRead).replace("\n", "\n\t")
     print received
-    time.sleep(sleepTime)
 
-sleepTime = 5
 def test_turret():
     turret_aim(0, 0)
     checkup()
@@ -66,9 +67,11 @@ def test_turret():
     turret_aim(0,45)
     checkup()
     
-    turret_fire():
+    turret_aim(0, 0)
     checkup()
 
+    turret_fire()
+    checkup()
     
 # MAIN LOOP
 print "STARTING LASER TRACKING..."
