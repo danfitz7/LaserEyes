@@ -167,7 +167,7 @@ def gimbal_laser_on():
 def gimbal_laser_off():
     global gimbalLaserOn
     if (gimbalLaserOn):
-        print "SEND GIMBAL LASER OFF!"
+        #print "SEND GIMBAL LASER OFF!"
 
         message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASEROFF_MESSAGE_INDICATOR])
         if (ser.write(message) != 2):
@@ -661,7 +661,8 @@ class LaserTracker(object):
 
 # Serial setup for arduino
 arduino_port = '/dev/cu.usbmodem14131'
-ser = serial.Serial(arduino_port, timeout=None, baudrate=115200) # Establish the connection on a specific port
+arduinoBaud = 250000 #115299
+ser = serial.Serial(arduino_port, timeout=None, baudrate=arduinoBaud) # Establish the connection on a specific port
 
 #network setup for pupil server
 port = "5000"
@@ -697,10 +698,11 @@ tracker.setup_camera_capture()
 turret_activate();
 
 while True:
-    #processPupilMessagesLoop()
-    
+ #   time.sleep(0.1);
     target = tracker.process_frame()
     if (target):
         turret_aim_at_target(target)
+    time.sleep(0.1);
+ #   processPupilMessagesLoop()
     
 ser.close()

@@ -495,8 +495,10 @@ inline void processSerialMessages(){
 
 // ############################################## MAIN PROGRAM ##############################################
 
+#define BAUDRATE 250000
+
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(BAUDRATE);
   setupTurret();
   setupGimbal();
 
