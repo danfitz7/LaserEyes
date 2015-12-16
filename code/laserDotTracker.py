@@ -31,8 +31,8 @@ import zmq    # thingy for sockets
 
 # Laser gimbal calibration vars
 yawRange = 45
-maxPitch = 20
-minPitch = -30
+maxPitch = 30
+minPitch = -50
 laser_upper_left = [-yawRange, maxPitch]
 laser_upper_right = [yawRange, maxPitch]
 laser_lower_left = [-yawRange, minPitch]
@@ -42,7 +42,8 @@ laser_mid_left = [-yawRange-5, 0]
 laser_upper_mid = [0,maxPitch]
 laser_lower_mid = [0, minPitch]
 laser_center = [0,0]
-laser_calibration_points = [laser_center, laser_mid_left, laser_upper_left, laser_upper_mid, laser_upper_right, laser_mid_right, laser_lower_right, laser_lower_mid, laser_lower_left]
+laser_calibration_points = [laser_center, laser_mid_left,  laser_upper_mid, laser_mid_right, laser_lower_mid]
+#alt_laser_calibration_points = [laser_upper_left, laser_upper_right, laser_lower_right, laser_lower_left]
 pupil_calibration_points = [[0.0,0.0]] * len(laser_calibration_points) # These are set by calibration
 
 
@@ -64,11 +65,14 @@ def normalize(a, d):
 def map_ranges(val, from_a, from_b, to_a, to_b):
     return (val - from_a) * (to_b - to_a)/(from_b-from_a) + to_a
 
-def interp_x(pupil_x):
-    return map_ranges(pupil_x, pupil_calibration_points[0][0], pupil_calibration_points[1][0], laser_calibration_points[0][0], laser_calibration_points[1][0])
+def axis_interp(pupil_val, reg_point_A, reg_Point_B, axis_index):
+    return map_ranges(pupil_x, pupil_calibration_points[reg_point_A][axis_index], pupil_calibration_points[reg_point_B][axis_index], laser_calibration_points[reg_point_A][axis_index], laser_calibration_points[reg_point_B][axis_index])
 
-def interp_y(pupil_y):
-    return map_ranges(pupil_y, pupil_calibration_points[0][1], pupil_calibration_points[1][1], laser_calibration_points[0][1], laser_calibration_points[1][1])
+def interp_x(pupil_x, reg_point_A, reg_point_B):
+    return axis_interp(pupil_x, reg_point_A, reg_point_B, 0)
+
+def interp_y(pupil_y,reg_point_A, reg_point_B):
+    return axis_interp(pupil_x, reg_point_A, reg_point_B, 1)
 
 distPow = 1.8
 def invDistWeight(pupil_pos, pupil_calib_point):
@@ -94,13 +98,17 @@ def invDistInterp(pupil_pos):
 
     return ((yaw, pitch))
 
+def StandardAxisInterpolate(pupil_pos):
+    yaw =   interp_x(pupil_pos[0], 1, 3)
+    pitch = interp_y(pupil_pos[1], 2, 4)
+    return ((yaw, pitch))
+
 def getTurretAngleForPupilPos(pupil_pos):
     return invDistInterp(pupil_pos)
     #return (interp_x(pupil_pos[0]), interp_y(pupil_pos[1]))
 
 ######################################################## GIMBAL INTERFACE ########################################################
 
-gimbalLaserOn = False # Keep track of the laser state
 
 # Messaging protocol for the laser gimbal. These should match the corresponding variables in the Arduino sketch
 GIMBAL_COMMAND_FRAME_START = 'G'
@@ -126,26 +134,31 @@ def gimbal_aim(yaw, pitch):
         print "ERROR: GImbal aim message wrong size!"
 
     # Turn the laser on if it was off from blinking
-    if (not gimbalLaserOn):
-        gimbal_laser_on();
+    gimbal_laser_on();
+
+gimbalLaserOn = False # Keep track of the laser state
 
 # Sends the Gimbal Laser-ON command: "GO" (GImbal ON)
 def gimbal_laser_on():
-    print "SEND GIMBAL LASER ON!"
+    global gimbalLaserOn
+    if (not gimbalLaserOn):
+        print "SEND GIMBAL LASER ON!"
 
-    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASERON_MESSAGE_INDICATOR])
-    if (ser.write(message) != 2):
-        print "ERROR: Gimbal laser-on message wrong size!"
-    gimbalLaserOn = True
+        message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASERON_MESSAGE_INDICATOR])
+        if (ser.write(message) != 2):
+            print "ERROR: Gimbal laser-on message wrong size!"
+        gimbalLaserOn = True
 
 # Sends the Gimbal Laser-ON command: "GO" (GImbal ON)
 def gimbal_laser_off():
-    print "SEND GIMBAL LASER ON!"
+    global gimbalLaserOn
+    if (gimbalLaserOn):
+        print "SEND GIMBAL LASER OFF!"
 
-    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASEROFF_MESSAGE_INDICATOR])
-    if (ser.write(message) != 2):
-        print "ERROR: Gimbal laser-off message wrong size!"
-    gimbalLaserOn = False
+        message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASEROFF_MESSAGE_INDICATOR])
+        if (ser.write(message) != 2):
+            print "ERROR: Gimbal laser-off message wrong size!"
+        gimbalLaserOn = False
 
 # Tests the functionalities of the laser gimbal
 gimbal_move_time = 1
@@ -182,9 +195,33 @@ def test_gimbal():
 # What to do when the user blinks
 # TODO: detect a certain time of blinking and activate the turret firing
 # NOTE that this is the only intersection of the otherwise seperate laser gimbal and shoulder turret systems
+
+FIRE_TIME = 1000*1000 #WARNING: make sure this is the same as TURRET_FIRE_TIME in the arduino code. This is the time to fire one shot.
+currently_firing  = False
+fire_start_time = 0;
+def fire():
+    turret_fire();
+    currently_firing = true
+    fire_time_start = time.time();
+
+BLINK_FIRE_TIME_THRESHOLD = 1000 * 1000 #Blink time before a fire is triggered
+blink_start_time = 0
+currently_blinking = False
 def blink():
-    print "BLINK!"
-    gimbal_laser_off();
+    if (not currently_firing):
+        print "BLINK!"
+        gimbal_laser_off();
+
+        if (not currently_blinking):
+            currently_blinking = True
+            blink_start_time = time.time()
+        else:
+            if (time.time() - blink_start_time > BLINK_FIRE_TIME_THRESHOLD):
+                currently_blinking = False
+                fire()
+    else:
+        if (time.time() - fire_start_time > FIRE_TIME):
+            currently_firing = False
 
 # Get the next pupil message and its type
 def getNextPupiltMessageItems():
@@ -219,17 +256,21 @@ def processPupilMessagesLoop():
     if (positionIsBlink(pos)):
         blink()
     else:
-        gimbalPos = getTurretAngleForPupilPos(pos)
-        gimbal_aim(gimbal_pos)
+        if (currently_blinking):
+            currently_blinking = False
+        
+        gimbal_pos = getTurretAngleForPupilPos(pos)
+        gimbal_aim(*gimbal_pos)
 
 
 # Eye-Gimbal mapping calibration routing
 # The program points the laser gimbal at a number of calibration point and waits for the user to stare at the dot.
 # The gimbal coordinates and corresponding pupil coordinates are stored in a list of calibration points for later mapping/interpolation
 def calibrate():
-    calib_registration_time = 2.0
-    calib_registration_deviation = 0.1
-
+    calib_registration_time = 1.0
+    calib_registration_deviation = 0.2
+    gimbal_movement_time = 0.5
+    
     print "\n\n\nCALIBRATION..."
     gimbal_laser_on();
 
@@ -241,7 +282,7 @@ def calibrate():
         
         # send the laser to position and wait for it to get there
         gimbal_aim(*calibration_point)
-        time.sleep(1);
+        time.sleep(gimbal_movement_time);
 
         #registration occurs when the user looks at the same area for a certain amount of time
         registered = False
@@ -392,6 +433,8 @@ time.sleep(2)
 calibrate()
 
 print "STARTING LASER TRACKING..."
+time.sleep(2)
+
 while True:
     processPupilMessagesLoop()
     

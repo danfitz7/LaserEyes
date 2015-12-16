@@ -20,6 +20,8 @@
 
 #include <Servo.h>
 
+// #define VERBOSE // uncomment for verbose debug output
+
 // For manual calibration with a potentiometer
 //#define potPin A0
 
@@ -65,18 +67,26 @@ void setupTurret(){
 }
 
 inline void turret_laser_off(){
-  Serial.println("Turret laser ON");
+  #ifdef VERBOSE
+    Serial.println("Turret laser ON");
+  #endif
+  
   digitalWrite(TURRET_LASER_PIN, LOW);
 }
 
 inline void turret_laser_on(){
-  Serial.println("Turret laser OFF");
+  #ifdef VERBOSE
+    Serial.println("Turret laser OFF");
+  #endif
+  
   digitalWrite(TURRET_LASER_PIN, HIGH);
 }
 
 #define TURRET_FIRE_TIME 1000
 void turret_fire(){
-  Serial.println("TURRET FIRE!");
+  #ifdef VERBOSE
+    Serial.println("TURRET FIRE!");
+  #endif
   
   digitalWrite(TURRET_LASER_PIN, HIGH);
   digitalWrite(TURRET_GUN_PIN, HIGH);
@@ -87,7 +97,10 @@ void turret_fire(){
 
 #define TURRET_GLOW_FADE_SPEED 10
 void turret_fade_in(){
-  Serial.println("Turret fade in");
+  #ifdef VERBOSE
+    Serial.println("Turret fade in");
+  #endif
+    
   for (int i = turret_glow_val;i <= 255;i++){
     analogWrite(TURRET_GLOW_PIN, i);
     delay(TURRET_GLOW_FADE_SPEED);
@@ -96,7 +109,10 @@ void turret_fade_in(){
 }
 
 void turret_fade_out(){
-  Serial.println("Turret fade out");
+  #ifdef VERBOSE
+    Serial.println("Turret fade out");
+  #endif
+  
   for (int i = turret_glow_val;i >= 0;i--){
     analogWrite(TURRET_GLOW_PIN, i);
     delay(TURRET_GLOW_FADE_SPEED);
@@ -106,22 +122,26 @@ void turret_fade_out(){
 
 // Takes yaw/pitch coordinates in turret reference frame, constrains them within turrent safe range, and aims at that position
 inline void turret_go_to(int yaw, int pitch){
-  Serial.print("Turret go to (");
-  Serial.print(yaw);
-  Serial.print(", ");
-  Serial.print(pitch);
-  Serial.println(")");
-
-  int newYaw = constrain(yaw, TURRET_YAW_MIN, TURRET_YAW_MAX);
-  int newPitch = constrain(pitch, TURRET_PITCH_MIN, TURRET_PITCH_MAX);
-
-  if (newYaw != yaw || newPitch != pitch){
-    Serial.print("\tTurret constrained at (");
+  #ifdef VERBOSE
+    Serial.print("Turret go to (");
     Serial.print(yaw);
     Serial.print(", ");
     Serial.print(pitch);
     Serial.println(")");
-  }
+  #endif
+  
+  int newYaw = constrain(yaw, TURRET_YAW_MIN, TURRET_YAW_MAX);
+  int newPitch = constrain(pitch, TURRET_PITCH_MIN, TURRET_PITCH_MAX);
+
+  #ifdef VERBOSE
+    if (newYaw != yaw || newPitch != pitch){
+      Serial.print("\tTurret constrained at (");
+      Serial.print(yaw);
+      Serial.print(", ");
+      Serial.print(pitch);
+      Serial.println(")");
+    }
+  #endif
   
   turretYawServo.write(newYaw);
   turretPitchServo.write(newPitch);
@@ -143,7 +163,10 @@ void turret_aim(int yaw, int pitch){
 }
 
 void turret_deactivate(){
-  Serial.println("TURRET DEACTIVATED");
+  #ifdef VERBOSE
+    Serial.println("TURRET DEACTIVATED");
+  #endif
+  
   turret_aim(0,50);
   turret_fade_out();
   turret_aim(0,45);
@@ -152,7 +175,10 @@ void turret_deactivate(){
 }
 
 void turret_activate(){
-  Serial.println("TURRET ACTIVATED");
+  #ifdef VERBOSE
+    Serial.println("TURRET ACTIVATED");
+  #endif
+  
   turretYawServo.attach(TURRET_YAW_PIN);
   turretPitchServo.attach(TURRET_PITCH_PIN);
   turret_aim(0,0);
@@ -205,11 +231,11 @@ Servo gimbalPitchServo;
 
 // Head laser gimbal constants
 #define GIMBAL_YAW_CENTER 91
-const unsigned short GIMBAL_YAW_MIN = GIMBAL_YAW_CENTER - 45;//#define GIMBAL_YAW_MIN 45
-const unsigned short GIMBAL_YAW_MAX = GIMBAL_YAW_CENTER + 45;//#define GIMBAL_YAW_MAX 135
-#define GIMBAL_PITCH_CENTER 70//102
-const unsigned short GIMBAL_PITCH_MIN = GIMBAL_YAW_CENTER - 45;//#define GIMBAL_PITCH_MIN 45
-const unsigned short GIMBAL_PITCH_MAX = GIMBAL_YAW_CENTER + 45;//#define GIMBAL_PITCH_MAX 135 
+const unsigned short GIMBAL_YAW_MIN = GIMBAL_YAW_CENTER - 90;//#define GIMBAL_YAW_MIN 45
+const unsigned short GIMBAL_YAW_MAX = GIMBAL_YAW_CENTER + 90;//#define GIMBAL_YAW_MAX 135
+#define GIMBAL_PITCH_CENTER 60 //102
+const unsigned short GIMBAL_PITCH_MIN = GIMBAL_PITCH_CENTER - 50;//#define GIMBAL_PITCH_MIN 45
+const unsigned short GIMBAL_PITCH_MAX = GIMBAL_PITCH_CENTER + 50;//#define GIMBAL_PITCH_MAX 135 
 
 void setupGimbal(){
   Serial.println("SETUP LASER GIMBAL");
@@ -225,33 +251,43 @@ void setupGimbal(){
 }
 
 void gimbal_laser_on(){
-  Serial.println("Gimbal laser ON!");
+  #ifdef VERBOSE
+    Serial.println("Gimbal laser ON!");
+  #endif
+  
   digitalWrite(GIMBAL_LASER_PIN, HIGH);
 }
 
 void gimbal_laser_off(){
-  Serial.println("Gimbal laser OFF.");
+  #ifdef VERBOSE
+    Serial.println("Gimbal laser OFF.");
+  #endif
+  
   digitalWrite(GIMBAL_LASER_PIN, LOW);
 }
 
 // Takes yaw/pitch coordinates in gimbal reference frame, constrains them within turrent safe range, and aims at that position
 inline void gimbal_go_to(int yaw, int pitch){
-  Serial.print("Gimbal go to (");
-  Serial.print(yaw);
-  Serial.print(", ");
-  Serial.print(pitch);
-  Serial.println(")");
-
-  int newYaw = constrain(yaw, GIMBAL_YAW_MIN, GIMBAL_YAW_MAX);
-  int newPitch = constrain(pitch, GIMBAL_PITCH_MIN, GIMBAL_PITCH_MAX);
-
-  if (newYaw != yaw || newPitch != pitch){
-    Serial.print("\tGimbal constrained at (");
+  #ifdef VERBOSE
+    Serial.print("Gimbal go to (");
     Serial.print(yaw);
     Serial.print(", ");
     Serial.print(pitch);
     Serial.println(")");
-  }
+  #endif
+
+  int newYaw = constrain(yaw, GIMBAL_YAW_MIN, GIMBAL_YAW_MAX);
+  int newPitch = constrain(pitch, GIMBAL_PITCH_MIN, GIMBAL_PITCH_MAX);
+
+  #ifdef VERBOSE
+    if (newYaw != yaw || newPitch != pitch){
+      Serial.print("\tGimbal constrained at (");
+      Serial.print(yaw);
+      Serial.print(", ");
+      Serial.print(pitch);
+      Serial.println(")");
+    }
+  #endif
   
   gimbalYawServo.write(newYaw);
   gimbalPitchServo.write(newPitch);
@@ -351,18 +387,27 @@ void getToNextCommandStart(){
 inline void parseTurretCommand(){
   Serial.read(); // clear the turret command frame start byte
   numBytesAvailable = Serial.available();
-  Serial.println("Parsing turret command...");
+  
+  #ifdef VERBOSE
+    Serial.println("Parsing turret command...");
+  #endif
 
   // Fire command
   char nextChar = Serial.peek();
   if (nextChar == TURRET_FIRE_MESSAGE_INDICTOR){
-    Serial.println("Turret FIRE message.");
+    #ifdef VERBOSE
+      Serial.println("Turret FIRE message.");
+    #endif
+    
     Serial.read(); // clear the turret fire message indicator
     turret_fire();
    
   // Aim command  
   }else if (nextChar == TURRET_AIM_MESSAGE_INDICATOR){
-    Serial.println("Turret AIM message...");
+    #ifdef VERBOSE
+      Serial.println("Turret AIM message...");
+    #endif
+    
     Serial.read(); // clear the turret aim message indicator
     while (Serial.available() < (COORDINATE_MESSAGE_DATA_LENGTH)){
       delay(1); // wait for new all the data to come in
@@ -385,23 +430,35 @@ inline void parseTurretCommand(){
 inline void parseGimbalCommand(){
   Serial.read(); // clear the laser command frame start byte
   numBytesAvailable = Serial.available();
-  Serial.println("Parsing laser gimbal command...");
-
+  
+  #ifdef VERBOSE
+    Serial.println("Parsing laser gimbal command...");
+  #endif
+  
   // laser ON command
   if (Serial.peek() == GIMBAL_LASERON_MESSAGE_INDICTOR){
-    Serial.println("Gimbal Laser ON message.");
+    #ifdef VERBOSE
+      Serial.println("Gimbal Laser ON message.");
+    #endif
+    
     Serial.read(); // clear the laser on message indicator
     gimbal_laser_on();
 
   // laser OFF
   }else if (Serial.peek() == GIMBAL_LASEROFF_MESSAGE_INDICTOR){
-    Serial.println("Gimbal Laser OFF message.");
+    #ifdef VERBOSE
+      Serial.println("Gimbal Laser OFF message.");
+    #endif
+    
     Serial.read(); // clear the laser off message indicator
     gimbal_laser_off();
     
   // Aim command  
   }else if (Serial.peek() == GIMBAL_AIM_MESSAGE_INDICATOR){
-    Serial.println("Gimbal AIM message...");
+    #ifdef VERBOSE
+      Serial.println("Gimbal AIM message...");
+    #endif
+    
     Serial.read(); // clear the turret aim message indicator
     while (Serial.available() < (COORDINATE_MESSAGE_DATA_LENGTH)){
       delay(1); // wait for new all the data to come in
