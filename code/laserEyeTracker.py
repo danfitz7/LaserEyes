@@ -207,7 +207,7 @@ def fire():
     currently_firing = True
     fire_time_start = time.time();
 
-BLINK_FIRE_TIME_THRESHOLD = 2.0 #Blink time before a fire is triggered
+BLINK_FIRE_TIME_THRESHOLD = 3.0 #Blink time before a fire is triggered
 blink_start_time = 0
 currently_blinking = False
 def blink():
