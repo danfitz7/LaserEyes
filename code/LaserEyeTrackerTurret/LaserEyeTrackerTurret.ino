@@ -233,7 +233,7 @@ Servo gimbalPitchServo;
 #define GIMBAL_YAW_CENTER 91
 const unsigned short GIMBAL_YAW_MIN = GIMBAL_YAW_CENTER - 90;//#define GIMBAL_YAW_MIN 45
 const unsigned short GIMBAL_YAW_MAX = GIMBAL_YAW_CENTER + 90;//#define GIMBAL_YAW_MAX 135
-#define GIMBAL_PITCH_CENTER 60 //102
+#define GIMBAL_PITCH_CENTER 50 //102
 const unsigned short GIMBAL_PITCH_MIN = GIMBAL_PITCH_CENTER - 50;//#define GIMBAL_PITCH_MIN 45
 const unsigned short GIMBAL_PITCH_MAX = GIMBAL_PITCH_CENTER + 50;//#define GIMBAL_PITCH_MAX 135 
 

@@ -31,8 +31,8 @@ import zmq    # thingy for sockets
 
 # Laser gimbal calibration vars
 yawRange = 45
-maxPitch = 30
-minPitch = -50
+maxPitch = 20
+minPitch = -25
 laser_upper_left = [-yawRange, maxPitch]
 laser_upper_right = [yawRange, maxPitch]
 laser_lower_left = [-yawRange, minPitch]
@@ -42,7 +42,7 @@ laser_mid_left = [-yawRange-5, 0]
 laser_upper_mid = [0,maxPitch]
 laser_lower_mid = [0, minPitch]
 laser_center = [0,0]
-laser_calibration_points = [laser_center, laser_mid_left,  laser_upper_mid, laser_mid_right, laser_lower_mid]
+laser_calibration_points = [laser_center, laser_mid_left, laser_mid_right, laser_lower_mid, laser_upper_mid,]
 #alt_laser_calibration_points = [laser_upper_left, laser_upper_right, laser_lower_right, laser_lower_left]
 pupil_calibration_points = [[0.0,0.0]] * len(laser_calibration_points) # These are set by calibration
 
@@ -99,8 +99,8 @@ def invDistInterp(pupil_pos):
     return ((yaw, pitch))
 
 def StandardAxisInterpolate(pupil_pos):
-    yaw =   interp_x(pupil_pos[0], 1, 3)
-    pitch = interp_y(pupil_pos[1], 2, 4)
+    yaw =   interp_x(pupil_pos[0], 1,2)
+    pitch = interp_y(pupil_pos[1], 3, 4)
     return ((yaw, pitch))
 
 def getTurretAngleForPupilPos(pupil_pos):
@@ -196,18 +196,24 @@ def test_gimbal():
 # TODO: detect a certain time of blinking and activate the turret firing
 # NOTE that this is the only intersection of the otherwise seperate laser gimbal and shoulder turret systems
 
-FIRE_TIME = 1000*1000 #WARNING: make sure this is the same as TURRET_FIRE_TIME in the arduino code. This is the time to fire one shot.
+FIRE_TIME = 1.1 #WARNING: make sure this is the same as TURRET_FIRE_TIME in the arduino code. This is the time to fire one shot.
 currently_firing  = False
 fire_start_time = 0;
 def fire():
+    print "FIRE!"
+    global currently_firing
+    global fire_start_time
     turret_fire();
-    currently_firing = true
+    currently_firing = True
     fire_time_start = time.time();
 
-BLINK_FIRE_TIME_THRESHOLD = 1000 * 1000 #Blink time before a fire is triggered
+BLINK_FIRE_TIME_THRESHOLD = 2.0 #Blink time before a fire is triggered
 blink_start_time = 0
 currently_blinking = False
 def blink():
+    global currently_blinking
+    global blink_start_time
+    global currently_firing
     if (not currently_firing):
         print "BLINK!"
         gimbal_laser_off();
@@ -216,9 +222,12 @@ def blink():
             currently_blinking = True
             blink_start_time = time.time()
         else:
-            if (time.time() - blink_start_time > BLINK_FIRE_TIME_THRESHOLD):
+            ellapsed_blink_time = time.time() - blink_start_time 
+            if (ellapsed_blink_time > BLINK_FIRE_TIME_THRESHOLD):
                 currently_blinking = False
                 fire()
+            else:
+                print '\t', ellapsed_blink_time
     else:
         if (time.time() - fire_start_time > FIRE_TIME):
             currently_firing = False
@@ -256,6 +265,7 @@ def processPupilMessagesLoop():
     if (positionIsBlink(pos)):
         blink()
     else:
+        global currently_blinking
         if (currently_blinking):
             currently_blinking = False
         
@@ -268,7 +278,7 @@ def processPupilMessagesLoop():
 # The gimbal coordinates and corresponding pupil coordinates are stored in a list of calibration points for later mapping/interpolation
 def calibrate():
     calib_registration_time = 1.0
-    calib_registration_deviation = 0.2
+    calib_registration_deviation = 0.3
     gimbal_movement_time = 0.5
     
     print "\n\n\nCALIBRATION..."
@@ -433,7 +443,9 @@ time.sleep(2)
 calibrate()
 
 print "STARTING LASER TRACKING..."
+gimbal_laser_off()
 time.sleep(2)
+gimbal_laser_on()
 
 while True:
     processPupilMessagesLoop()
