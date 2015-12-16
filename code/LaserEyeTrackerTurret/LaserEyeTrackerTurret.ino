@@ -47,24 +47,6 @@ Servo turretPitchServo;
 #define TURRET_PITCH_MAX 105 
 
 volatile unsigned char turret_glow_val = 0;
-void setupTurret(){
-  Serial.println("SETUP TURRET");
-  
-  // First TURN OFF THE GUN!
-  pinMode(TURRET_GUN_PIN, OUTPUT);
-  digitalWrite(TURRET_GUN_PIN, LOW);
-
-  turretYawServo.attach(TURRET_YAW_PIN);
-  turretYawServo.write(90);
-  turretPitchServo.attach(TURRET_PITCH_PIN);
-  turretPitchServo.write(90);
-
-  pinMode(TURRET_LASER_PIN, OUTPUT);
-  digitalWrite(TURRET_LASER_PIN, LOW);
-
-  pinMode(TURRET_GLOW_PIN, OUTPUT);
-  analogWrite(TURRET_GLOW_PIN, turret_glow_val);
-}
 
 inline void turret_laser_off(){
   #ifdef VERBOSE
@@ -169,7 +151,6 @@ void turret_deactivate(){
   
   turret_aim(0,50);
   turret_fade_out();
-  turret_aim(0,45);
   turretYawServo.detach();
   turretPitchServo.detach();
 }
@@ -216,6 +197,28 @@ void testTurret(){
   turret_fire();
 
   turret_fade_out();
+}
+
+void setupTurret(){
+  Serial.println("SETUP TURRET");
+  
+  // First TURN OFF THE GUN!
+  pinMode(TURRET_GUN_PIN, OUTPUT);
+  digitalWrite(TURRET_GUN_PIN, LOW);
+
+  turretYawServo.attach(TURRET_YAW_PIN);
+  turretYawServo.write(90);
+  turretPitchServo.attach(TURRET_PITCH_PIN);
+  turretPitchServo.write(90);
+
+  pinMode(TURRET_LASER_PIN, OUTPUT);
+  digitalWrite(TURRET_LASER_PIN, LOW);
+
+  pinMode(TURRET_GLOW_PIN, OUTPUT);
+  analogWrite(TURRET_GLOW_PIN, turret_glow_val);
+
+  turret_aim(0,45);
+  delay(1000); // wait for turret to move to deactive position
 }
 
 // ############################################## HEAD LASER GIMBAL ##############################################
@@ -510,7 +513,8 @@ void setup() {
   //delay(2000);
   //testTurret();
 
-  turret_deactivate();
+  // Special for initial srartup. Need to get turret in deactivated state without activating it.
+  turret_deactivate(); // Returns instantly because the lights are already faded, no time to move.
 }
 
 void loop() {

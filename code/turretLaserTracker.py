@@ -33,7 +33,7 @@ class LaserTracker(object):
         self.val_min = val_min
         self.val_max = val_max
         self.display_thresholds = display_thresholds
-
+        self.erosion_kernel = np.ones((2,2),np.uint8)
         self.capture = None  # camera capture device
         self.channels = {
             'hue': None,
@@ -150,13 +150,13 @@ class LaserTracker(object):
 
         return hsv_image
 
-    def display(self, img, img2, frame):
+    def display(self, img, frame):
         """Display the combined image and (optionally) all other image channels
         NOTE: default color space in OpenCV is BGR.
         """
         cv2.imshow('RGB_VideoFrame', frame)
         cv2.imshow('LaserPointer', self.channels['laser'])
-        cv2.imshow('PointerPosition', img2)
+        #cv2.imshow('PointerPosition', img2)
         if self.display_thresholds:
             cv2.imshow('Thresholded_HSV_Image', img)
             cv2.imshow('Hue', self.channels['hue'])
@@ -170,7 +170,7 @@ class LaserTracker(object):
         # create output windows
         self.create_and_position_window('LaserPointer', 0, 0)
         self.create_and_position_window('RGB_VideoFrame',10 + self.cam_width, 0)
-        self.create_and_position_window('PointerPosition', 20 + self.cam_width, 0)
+        #self.create_and_position_window('PointerPosition', 20 + self.cam_width, 0)
         
         if self.display_thresholds:
             self.create_and_position_window('Thresholded_HSV_Image', 10, 10)
@@ -178,6 +178,36 @@ class LaserTracker(object):
             self.create_and_position_window('Saturation', 30, 30)
             self.create_and_position_window('Value', 40, 40)
 
+    def get_laser_dot_position(self):
+        self.channels['laser'] = cv2.erode(self.channels['laser'], self.erosion_kernel, iterations = 1)
+        numWhite = cv2.countNonZero(self.channels['laser'])
+        #print numWhite
+        if (numWhite >=1):
+            M = cv2.moments(self.channels['laser'], False)
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+            #print "(", cx, ", ", cy, ")"
+            center = (cx, cy)
+            return center
+        else:
+            return False
+
+    def process_frame(self):
+        # 1. capture the current image
+        success, frame = self.capture.read()
+        if not success: # no image captured... end the processing
+            sys.stderr.write("Could not read camera frame. Quitting\n")
+            sys.exit(1)
+
+        hsv_image = self.detect(frame)
+
+
+        center = self.get_laser_dot_position()
+        if (center):
+            cv2.circle(self.channels['laser'], center, 10, 255, 2)
+        
+        self.display(hsv_image, frame)
+        self.handle_quit()
 
     def run(self):
         # Set up window positions
@@ -186,48 +216,7 @@ class LaserTracker(object):
         self.setup_camera_capture()
 
         while True:
-            # 1. capture the current image
-            success, frame = self.capture.read()
-            if not success: # no image captured... end the processing
-                sys.stderr.write("Could not read camera frame. Quitting\n")
-                sys.exit(1)
-
-            hsv_image = self.detect(frame)
-
-
-            # dilate and erode a couple times
-            kernel = np.ones((2,2),np.uint8)
-            laser_eroded = cv2.erode(self.channels['laser'], kernel, iterations = 1)
-
-            ############ K-Means clustering hack ############
-            # convert to np.float32
-            #Z = np.float32(Z)
-
-            # define criteria, number of clusters(K) and apply kmeans()
-            #criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-            #K = 8
-            #ret,label,center=cv2.kmeans(Z,K,None,criteria,10,cv2.KMEANS_RANDOM_CENTERS)
-            
-            #laser_eroded = cv2.GaussianBlur(laser_eroded, (5, 5), 0)
-            
-            #(minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(laser_eroded)
-
-            numWhite = cv2.countNonZero(laser_eroded)
-            #print numWhite
-            if (numWhite >=1):
-                M = cv2.moments(laser_eroded, False)
-                cx = int(M['m10']/M['m00'])
-                cy = int(M['m01']/M['m00'])
-                #print "(", cx, ", ", cy, ")"
-                center = (cx, cy)
-            
-                cv2.circle(laser_eroded, center, 10, 255, 2)
-            
-            self.display(hsv_image, laser_eroded, frame)
-            self.handle_quit()
-
-
-        
+            self.process_frame()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the Laser Tracker')
