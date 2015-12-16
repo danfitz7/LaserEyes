@@ -30,9 +30,9 @@ import zmq    # thingy for sockets
 #Pupil max" = 100
 
 # Laser gimbal calibration vars
-yawRange = 55
-maxPitch = 37
-minPitch = -37
+yawRange = 45
+maxPitch = 20
+minPitch = -30
 laser_upper_left = [-yawRange, maxPitch]
 laser_upper_right = [yawRange, maxPitch]
 laser_lower_left = [-yawRange, minPitch]
@@ -42,7 +42,7 @@ laser_mid_left = [-yawRange-5, 0]
 laser_upper_mid = [0,maxPitch]
 laser_lower_mid = [0, minPitch]
 laser_center = [0,0]
-laser_calibration_points = [laser_mid_left, laser_upper_left, laser_upper_mid, laser_upper_right, laser_mid_right, laser_lower_right, laser_lower_mid, laser_lower_left, laser_center]
+laser_calibration_points = [laser_center, laser_mid_left, laser_upper_left, laser_upper_mid, laser_upper_right, laser_mid_right, laser_lower_right, laser_lower_mid, laser_lower_left]
 pupil_calibration_points = [[0.0,0.0]] * len(laser_calibration_points) # These are set by calibration
 
 
@@ -70,6 +70,7 @@ def interp_x(pupil_x):
 def interp_y(pupil_y):
     return map_ranges(pupil_y, pupil_calibration_points[0][1], pupil_calibration_points[1][1], laser_calibration_points[0][1], laser_calibration_points[1][1])
 
+distPow = 1.8
 def invDistWeight(pupil_pos, pupil_calib_point):
     return 1.0/math.pow(distance(pupil_pos, pupil_calib_point), distPow)
 
@@ -99,7 +100,7 @@ def getTurretAngleForPupilPos(pupil_pos):
 
 ######################################################## GIMBAL INTERFACE ########################################################
 
-gimbalLaserOn = False 3 Keep track of the laser state
+gimbalLaserOn = False # Keep track of the laser state
 
 # Messaging protocol for the laser gimbal. These should match the corresponding variables in the Arduino sketch
 GIMBAL_COMMAND_FRAME_START = 'G'
@@ -109,13 +110,13 @@ GIMBAL_AIM_MESSAGE_INDICATOR = 'A'
 GIMBAL_AIM_MESSAGE_DATA_LENGTH = 4
 
 # Sends a turret aim command: "TAYYPP" where YY is the yaw and PP is the pitch (both 2-byte signed shorts)
-def gibal_aim(yaw, pitch):
+def gimbal_aim(yaw, pitch):
     print "SEND GIMBAL AIM (", yaw, ",", pitch, ")"
 
     yawBytes = struct.pack(">h", yaw)
     pitchBytes = struct.pack(">h", pitch)
 
-    print "Y", yaw, "->", int(ord(yawBytes[0])), int(ord(yawBytes[1])), "\tP",pitch, "->", int(ord(pitchBytes[0])) , int(ord(pitchBytes[1]))  
+#    print "Y", yaw, "->", int(ord(yawBytes[0])), int(ord(yawBytes[1])), "\tP",pitch, "->", int(ord(pitchBytes[0])) , int(ord(pitchBytes[1]))  
 
     message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_AIM_MESSAGE_INDICATOR])
     message.extend(yawBytes)
@@ -125,14 +126,14 @@ def gibal_aim(yaw, pitch):
         print "ERROR: GImbal aim message wrong size!"
 
     # Turn the laser on if it was off from blinking
-    if (!gimbalLaserOn){
+    if (not gimbalLaserOn):
         gimbal_laser_on();
 
 # Sends the Gimbal Laser-ON command: "GO" (GImbal ON)
 def gimbal_laser_on():
     print "SEND GIMBAL LASER ON!"
 
-    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASEROFF_MESSAGE_INDICATOR])
+    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASERON_MESSAGE_INDICATOR])
     if (ser.write(message) != 2):
         print "ERROR: Gimbal laser-on message wrong size!"
     gimbalLaserOn = True
@@ -141,27 +142,41 @@ def gimbal_laser_on():
 def gimbal_laser_off():
     print "SEND GIMBAL LASER ON!"
 
-    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASERON_MESSAGE_INDICATOR])
+    message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASEROFF_MESSAGE_INDICATOR])
     if (ser.write(message) != 2):
         print "ERROR: Gimbal laser-off message wrong size!"
     gimbalLaserOn = False
-        
-def testGimbal():
-    # quick test
-    print "TESTING TURRET"
-    sendLaserTurretPosition((-80, 0))
-    time.sleep(2)
-    for i in range(-80, 80):
-        sendLaserTurretPosition((i, 0))
-        time.sleep(0.1)
-    sendLaserTurretPosition((0, -80))
-    time.sleep(2)
-    for i in range(-80, 80):
-        sendLaserTurretPosition((0, i))
-        time.sleep(0.1)
-    sendLaserTurretPosition((0, 0))
-    time.sleep(2)
 
+# Tests the functionalities of the laser gimbal
+gimbal_move_time = 1
+def test_gimbal():
+    print "TESTING TURRET"
+
+    gimbal_laser_on()
+    checkup(gimbal_move_time)
+    
+    gimbal_aim(0, 0)
+    checkup(gimbal_move_time)
+    gimbal_aim(-45,0)
+    checkup(gimbal_move_time)
+    gimbal_aim(0,0)
+    checkup(gimbal_move_time)
+    gimbal_aim(45,0)
+    checkup(gimbal_move_time)
+    gimbal_aim(0,0)
+    checkup(gimbal_move_time)
+    gimbal_aim(0,-45)
+    checkup(gimbal_move_time)
+    gimbal_aim(0,0)
+    checkup(gimbal_move_time)
+    gimbal_aim(0,45)
+    checkup(gimbal_move_time)
+    gimbal_aim(0, 0)
+    checkup(gimbal_move_time)
+
+    gimbal_laser_off();
+    checkup(gimbal_move_time)
+        
 ######################################################## GIMBAL MAPPING AND CALIBRATION ########################################################
 
 # What to do when the user blinks
@@ -171,53 +186,42 @@ def blink():
     print "BLINK!"
     gimbal_laser_off();
 
-#get the next pupil message
-def getNextMessage():
+# Get the next pupil message and its type
+def getNextPupiltMessageItems():
     msg = socket.recv()
     items = msg.split("\n") 
     msg_type = items.pop(0)
+    while (msg_type != 'Pupil'):
+        msg = socket.recv()
+        #print "raw msg:\n", msg
+        items = msg.split("\n") 
+        msg_type = items.pop(0)
     items = dict([i.split(':',1) for i in items[:-1] ])
-    return msg_type, items
+    return items
+
+def getNextPupilPos():
+    items = getNextPupiltMessageItems();
+    x, y = map(float, items['norm_pos'].strip('()').split(','))
+    return x,y
+
+def positionIsBlink(pos):
+    return (pos[0] == 0.0 and pos[1] == 0.0)
+
+def getNextNonBlinkPupilPos():
+    pos = getNextPupilPos()
+    while (positionIsBlink(pos)):
+        pos = getNextPupilPos()
+    return pos
 
 # This is meant to be called in an infinite loop
 def processPupilMessagesLoop():
-    msg_type, items = getNextMessage();
+    pos = getNextPupilPos()
+    if (positionIsBlink(pos)):
+        blink()
+    else:
+        gimbalPos = getTurretAngleForPupilPos(pos)
+        gimbal_aim(gimbal_pos)
 
-    print "\n"
-    if msg_type == 'Pupil':
-        try:
-            #print "Pupil:\nnorm_pos:\t%s\ndiameter:\t%s" %(items['norm_pos'], items['diameter'])
-            pupilPosStr = items['norm_pos']
-            x, y = map(float, pupilPosStr.strip('()').split(','))
-            print "PUPIL (", x, ", ", y, ")"
-            if (x==0.0 and y==0.0):
-                blink()
-            else:
-                turret_pos = getTurretAngleForPupilPos(pupil_pos)
-                sendLaserTurretPosition(turret_pos)
-        except KeyError:
-            pass
-
-
-# get the next pupil position from the next pupil-specific message
-def getNextPupilPos():
-
-    # Get the items data from the next "Pupil" message (as opposed to "Gaze" messages)
-    msg_type, items = getNextMessage()
-    while (msg_type != "Pupil"):
-        msg_type, items = getNextMessage()
-
-    try:
-        x, y = map(float, items['norm_pos'].strip('()').split(','))
-
-        # ignore pupil not found (blink)
-        while (x == 0.0 and y == 0.0):
-            items = getNextPupilMessageItems();
-            x, y = map(float, items['norm_pos'].strip('()').split(','))
-
-        return x,y
-    except KeyError:
-        pass
 
 # Eye-Gimbal mapping calibration routing
 # The program points the laser gimbal at a number of calibration point and waits for the user to stare at the dot.
@@ -226,21 +230,24 @@ def calibrate():
     calib_registration_time = 2.0
     calib_registration_deviation = 0.1
 
-    print "CALIBRATION..."
+    print "\n\n\nCALIBRATION..."
+    gimbal_laser_on();
+
+    # loop through reg points
     for i in range(0,len(laser_calibration_points)):
-        #print "Calibration point ", 1+i
+        print "Calibration point ", 1+i
         calibration_point = laser_calibration_points[i]
         print "Please look at laser target at ", calibration_point
         
         # send the laser to position and wait for it to get there
-        sendLaserTurretPosition(calibration_point)
+        gimbal_aim(*calibration_point)
         time.sleep(1);
 
         #registration occurs when the user looks at the same area for a certain amount of time
         registered = False
         while (not registered):
-            print "Registration failed. retrying..."
-            cur_pos = getNextPupilPos()
+            print "Retrying registration..."
+            cur_pos = getNextNonBlinkPupilPos()
             print "\t", cur_pos
             
             # reset everything
@@ -279,6 +286,8 @@ def calibrate():
 TURRET_COMMAND_FRAME_START = 'T'
 TURRET_FIRE_MESSAGE_INDICATOR = 'F'
 TURRET_AIM_MESSAGE_INDICATOR = 'A'
+TURRET_ACTIVATE_MESSAGE_INDICATOR = 'X'
+TURRET_DEACTIVATE_MESSAGE_INDICATOR = 'O'
 TURRET_AIM_MESSAGE_DATA_LENGTH = 4
 
 def turret_aim(yaw, pitch):
@@ -290,7 +299,7 @@ def turret_aim(yaw, pitch):
     yawBytes = struct.pack(">h", yaw)
     pitchBytes = struct.pack(">h", pitch)
 
-    print "Y", yaw, "->", int(ord(yawBytes[0])), int(ord(yawBytes[1])), "\tP",pitch, "->", int(ord(pitchBytes[0])) , int(ord(pitchBytes[1]))  
+#    print "Y", yaw, "->", int(ord(yawBytes[0])), int(ord(yawBytes[1])), "\tP",pitch, "->", int(ord(pitchBytes[0])) , int(ord(pitchBytes[1]))  
 
     message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_AIM_MESSAGE_INDICATOR])
     message.extend(yawBytes)
@@ -303,43 +312,59 @@ def turret_aim(yaw, pitch):
 # Sends the Turret Fire command: "TF" (Turret Fire)
 def turret_fire():
     print "SEND TURRET FIRE!"
-
     message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_FIRE_MESSAGE_INDICATOR])
     if (ser.write(message) != 2):
         print "ERROR: Turret fire message wrong size!"
 
+def turret_activate():
+    print "SEND TURRET ACTIVATE!"
+    message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_ACTIVATE_MESSAGE_INDICATOR])
+    if (ser.write(message) != 2):
+        print "ERROR: Turret activate message wrong size!"
+        
+def turret_deactivate():
+    print "SEND TURRET DEACTIVATE!"
+    message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_DEACTIVATE_MESSAGE_INDICATOR])
+    if (ser.write(message) != 2):
+        print "ERROR: Turret deactivate message wrong size!"
+
+
 # Helper function for turret testing: Prints serial messages from arduino and waits a specific time (usually for the turret to aim somewhere or fire)
-sleepTime = 2
-def checkup():
+def checkup(sleepTime):
     time.sleep(sleepTime)
     bytesToRead = ser.inWaiting()
     received = ser.read(bytesToRead).replace("\n", "\n\t")
     print received
 
 # Tests the functionalities of the turret
+turret_move_time = 2
 def test_turret():
+    print "TESTING TURRET"
+
+    #turret_deactivate();
+    #checkup(5)
+    turret_activate();
+    checkup(3)
     turret_aim(0, 0)
-    checkup()
+    checkup(turret_move_time)
     turret_aim(-45,0)
-    checkup()
-    turret_aim(0,0)
-    checkup()
+    checkup(turret_move_time)
     turret_aim(45,0)
-    checkup()
+    checkup(turret_move_time)
     turret_aim(0,0)
-    checkup()
+    checkup(turret_move_time)
     turret_aim(0,-45)
-    checkup()
-    turret_aim(0,0)
-    checkup()
+    checkup(turret_move_time)
     turret_aim(0,45)
-    checkup()
-    
+    checkup(turret_move_time)
     turret_aim(0, 0)
-    checkup()
+    checkup(turret_move_time)
 
     turret_fire()
-    checkup()
+    checkup(turret_move_time)
+
+    turret_deactivate();
+    checkup(3)
 
 ######################################################## MAIN PROGRAM ########################################################
 
@@ -355,11 +380,19 @@ socket.connect("tcp://127.0.0.1:"+port)
 #filter by messages by stating string 'STRING'. '' receives all messages
 socket.setsockopt(zmq.SUBSCRIBE, '')
 
+# for good measure
+time.sleep(2)
+
+
+# TEST
+#test_turret()
+#test_gimbal()
+
+
 calibrate()
 
 print "STARTING LASER TRACKING..."
 while True:
-    test_turret()
+    processPupilMessagesLoop()
     
-
 ser.close()
