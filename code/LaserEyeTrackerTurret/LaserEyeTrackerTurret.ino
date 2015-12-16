@@ -65,19 +65,37 @@ inline void turret_laser_on(){
 }
 
 #define TURRET_FIRE_TIME 1000
+unsigned long fire_start_time = 0;
+boolean firing  = false;
 void turret_fire(){
   #ifdef VERBOSE
     Serial.println("TURRET FIRE!");
   #endif
   
-  digitalWrite(TURRET_LASER_PIN, HIGH);
+  //digitalWrite(TURRET_LASER_PIN, HIGH);
   digitalWrite(TURRET_GUN_PIN, HIGH);
-  delay(TURRET_FIRE_TIME);
-  digitalWrite(TURRET_GUN_PIN, LOW);
-  digitalWrite(TURRET_LASER_PIN, LOW);
+  //delay(TURRET_FIRE_TIME);
+  fire_start_time = millis();
+  firing = true;
+  //digitalWrite(TURRET_GUN_PIN, LOW);
+  //digitalWrite(TURRET_LASER_PIN, LOW);
 }
 
-#define TURRET_GLOW_FADE_SPEED 10
+
+// Should be called every loop to figure out when we need to turn off the gun
+void fireCheck(){
+  if (firing){
+    if (millis() - fire_start_time >= TURRET_FIRE_TIME){
+      // Stop firing
+      Serial.println("Stop firing!");
+      firing = false;
+      fire_start_time = -1;
+      digitalWrite(TURRET_GUN_PIN, LOW); 
+    }
+  }
+}
+
+#define TURRET_GLOW_FADE_SPEED 5
 void turret_fade_in(){
   #ifdef VERBOSE
     Serial.println("Turret fade in");
@@ -413,7 +431,7 @@ inline void parseTurretCommand(){
     
     Serial.read(); // clear the turret aim message indicator
     while (Serial.available() < (COORDINATE_MESSAGE_DATA_LENGTH)){
-      delay(1); // wait for new all the data to come in
+      //delay(1); // wait for new all the data to come in
     }
     
     short turretYaw, turretPitch;
@@ -464,7 +482,7 @@ inline void parseGimbalCommand(){
     
     Serial.read(); // clear the turret aim message indicator
     while (Serial.available() < (COORDINATE_MESSAGE_DATA_LENGTH)){
-      delay(1); // wait for new all the data to come in
+      //delay(1); // wait for new all the data to come in
     }
     
     short laserYaw, laserPitch;
@@ -495,7 +513,7 @@ inline void processSerialMessages(){
 
 // ############################################## MAIN PROGRAM ##############################################
 
-#define BAUDRATE 250000
+#define BAUDRATE 9600//250000
 
 void setup() {
   Serial.begin(BAUDRATE);
@@ -520,6 +538,8 @@ void setup() {
 }
 
 void loop() {
+  fireCheck();
+  
   #ifdef potPin
     int val = map(analogRead(potPin), 0, 1023, 0, 360);
     Serial.println(val);

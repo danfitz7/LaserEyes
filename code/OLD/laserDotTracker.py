@@ -31,8 +31,8 @@ import zmq    # thingy for sockets
 
 # Laser gimbal calibration vars
 yawRange = 45
-maxPitch = 20
-minPitch = -25
+maxPitch = 17
+minPitch = -30
 laser_upper_left = [-yawRange, maxPitch]
 laser_upper_right = [yawRange, maxPitch]
 laser_lower_left = [-yawRange, minPitch]
@@ -421,7 +421,7 @@ def test_turret():
 
 # Serial setup for arduino
 arduino_port = '/dev/cu.usbmodem14131'
-ser = serial.Serial(arduino_port, timeout=None, baudrate=115200) # Establish the connection on a specific port
+ser = serial.Serial(arduino_port, timeout=None, baudrate=9600) # Establish the connection on a specific port
 
 #network setup for pupil server
 port = "5000"
@@ -438,7 +438,6 @@ time.sleep(2)
 # TEST
 #test_turret()
 #test_gimbal()
-
 
 calibrate()
 

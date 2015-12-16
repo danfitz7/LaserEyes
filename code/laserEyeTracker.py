@@ -32,6 +32,11 @@ import struct # for packing bits
 import zmq    # thingy for sockets
 
 
+# MODES OF OPERATION
+onlyBlinkFiring = False
+noEyeTracking = True
+laserTargeting = True
+
 # Pupil Calibration values (Use these in PupilCapture
 # "Pupil Intensity Range" = 20
 # Pupil min" = 40.0
@@ -42,11 +47,10 @@ CAM_FOV_X = 90
 CAM_FOV_Y = 90
 
 
-
 # Laser gimbal calibration vars
 yawRange = 45
-maxPitch = 20
-minPitch = -25
+maxPitch = 17
+minPitch = -30
 laser_upper_left = [-yawRange, maxPitch]
 laser_upper_right = [yawRange, maxPitch]
 laser_lower_left = [-yawRange, minPitch]
@@ -79,14 +83,14 @@ def normalize(a, d):
 def map_ranges(val, from_a, from_b, to_a, to_b):
     return (val - from_a) * (to_b - to_a)/(from_b-from_a) + to_a
 
-def axis_interp(pupil_val, reg_point_A, reg_Point_B, axis_index):
-    return map_ranges(pupil_x, pupil_calibration_points[reg_point_A][axis_index], pupil_calibration_points[reg_point_B][axis_index], laser_calibration_points[reg_point_A][axis_index], laser_calibration_points[reg_point_B][axis_index])
+def axis_interp(pupil_val, reg_point_A, reg_point_B, axis_index):
+    return map_ranges(pupil_val, pupil_calibration_points[reg_point_A][axis_index], pupil_calibration_points[reg_point_B][axis_index], laser_calibration_points[reg_point_A][axis_index], laser_calibration_points[reg_point_B][axis_index])
 
 def interp_x(pupil_x, reg_point_A, reg_point_B):
     return axis_interp(pupil_x, reg_point_A, reg_point_B, 0)
 
 def interp_y(pupil_y,reg_point_A, reg_point_B):
-    return axis_interp(pupil_x, reg_point_A, reg_point_B, 1)
+    return axis_interp(pupil_y, reg_point_A, reg_point_B, 1)
 
 distPow = 1.8
 def invDistWeight(pupil_pos, pupil_calib_point):
@@ -112,14 +116,14 @@ def invDistInterp(pupil_pos):
 
     return ((yaw, pitch))
 
-def StandardAxisInterpolate(pupil_pos):
+def standardAxisInterpolate(pupil_pos):
     yaw =   interp_x(pupil_pos[0], 1,2)
     pitch = interp_y(pupil_pos[1], 3, 4)
     return ((yaw, pitch))
 
 def getTurretAngleForPupilPos(pupil_pos):
     return invDistInterp(pupil_pos)
-    #return (interp_x(pupil_pos[0]), interp_y(pupil_pos[1]))
+    #return standardAxisInterpolate(pupil_pos)
 
 ######################################################## GIMBAL INTERFACE ########################################################
 
@@ -133,7 +137,7 @@ GIMBAL_AIM_MESSAGE_DATA_LENGTH = 4
 
 # Sends a turret aim command: "TAYYPP" where YY is the yaw and PP is the pitch (both 2-byte signed shorts)
 def gimbal_aim(yaw, pitch):
-    print "SEND GIMBAL AIM (", yaw, ",", pitch, ")"
+    #print "SEND GIMBAL AIM (", yaw, ",", pitch, ")"
 
     yawBytes = struct.pack(">h", yaw)
     pitchBytes = struct.pack(">h", pitch)
@@ -152,7 +156,7 @@ def gimbal_aim(yaw, pitch):
 
 gimbalLaserOn = False # Keep track of the laser state
 
-# Sends the Gimbal Laser-ON command: "GO" (GImbal ON)
+# Sends the Gimbal Laser-ON command: "GL" (GImbal ON)
 def gimbal_laser_on():
     global gimbalLaserOn
     if (not gimbalLaserOn):
@@ -163,11 +167,11 @@ def gimbal_laser_on():
             print "ERROR: Gimbal laser-on message wrong size!"
         gimbalLaserOn = True
 
-# Sends the Gimbal Laser-ON command: "GO" (GImbal ON)
+# Sends the Gimbal Laser-OFF command: "Gl" (GImbal ON)
 def gimbal_laser_off():
     global gimbalLaserOn
     if (gimbalLaserOn):
-        #print "SEND GIMBAL LASER OFF!"
+        print "SEND GIMBAL LASER OFF!"
 
         message = bytearray([GIMBAL_COMMAND_FRAME_START, GIMBAL_LASEROFF_MESSAGE_INDICATOR])
         if (ser.write(message) != 2):
@@ -228,9 +232,13 @@ def blink():
     global currently_blinking
     global blink_start_time
     global currently_firing
+    
     if (not currently_firing):
+        global onlyBlinkFiring
+        
         #print "BLINK!"
-        gimbal_laser_off();
+        if (not onlyBlinkFiring):
+            gimbal_laser_off();
 
         if (not currently_blinking):
             currently_blinking = True
@@ -238,10 +246,10 @@ def blink():
         else:
             ellapsed_blink_time = time.time() - blink_start_time 
             if (ellapsed_blink_time > BLINK_FIRE_TIME_THRESHOLD):
-                currently_blinking = False
+                currently_blinking = False # effectivly resets the timer
                 fire()
-            #else:
-            #    print '\t', ellapsed_blink_time
+            else:
+                print '\tBlinkTime:', ellapsed_blink_time
     else:
         if (time.time() - fire_start_time > FIRE_TIME):
             currently_firing = False
@@ -275,17 +283,20 @@ def getNextNonBlinkPupilPos():
 
 # This is meant to be called in an infinite loop
 def processPupilMessagesLoop():
+    global currently_blinking
     pos = getNextPupilPos()
     if (positionIsBlink(pos)):
         blink()
     else:
-        global currently_blinking
+        # if we're moving, we are not blinking
         if (currently_blinking):
             currently_blinking = False
-        print "E (", pos[0], ", ", pos[1], ")"
-        gimbal_pos = getTurretAngleForPupilPos(pos)
-        gimbal_aim(*gimbal_pos)
 
+        # We are doing more than just tracking blinks (laser gimbal is tracking gaze)    
+        if (not onlyBlinkFiring):               
+            #print "E (", pos[0], ", ", pos[1], ")"
+            gimbal_pos = getTurretAngleForPupilPos(pos)
+            gimbal_aim(*gimbal_pos)
 
 # Eye-Gimbal mapping calibration routing
 # The program points the laser gimbal at a number of calibration point and waits for the user to stare at the dot.
@@ -377,9 +388,9 @@ def turret_aim(yaw, pitch):
 # Sends the Turret Fire command: "TF" (Turret Fire)
 def turret_fire():
     print "SEND TURRET FIRE!"
-    message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_FIRE_MESSAGE_INDICATOR])
-    if (ser.write(message) != 2):
-        print "ERROR: Turret fire message wrong size!"
+#    message = bytearray([TURRET_COMMAND_FRAME_START, TURRET_FIRE_MESSAGE_INDICATOR])
+#    if (ser.write(message) != 2):
+#        print "ERROR: Turret fire message wrong size!"
 
 def turret_activate():
     print "SEND TURRET ACTIVATE!"
@@ -661,7 +672,7 @@ class LaserTracker(object):
 
 # Serial setup for arduino
 arduino_port = '/dev/cu.usbmodem14131'
-arduinoBaud = 250000 #115299
+arduinoBaud = 9600#50000 #115299
 ser = serial.Serial(arduino_port, timeout=None, baudrate=arduinoBaud) # Establish the connection on a specific port
 
 #network setup for pupil server
@@ -681,28 +692,33 @@ time.sleep(2)
 #test_gimbal()
 
 
-#calibrate()
+if (not noEyeTracking and not onlyBlinkFiring):
+    calibrate()
 
 print "STARTING LASER TRACKING..."
 gimbal_laser_off()
 time.sleep(2)
 gimbal_laser_on()
 
-# Set up laser dot tracker class instance
-tracker = LaserTracker()
-# Set up window positions
-tracker.setup_windows()
-# Set up the camera capture
-tracker.setup_camera_capture()
+if (laserTargeting):
+    # Set up laser dot tracker class instance
+    tracker = LaserTracker() # Set up window positions
+    tracker.setup_windows()  # Set up the camera capture
+    tracker.setup_camera_capture()
 
 turret_activate();
 
 while True:
- #   time.sleep(0.1);
-    target = tracker.process_frame()
-    if (target):
-        turret_aim_at_target(target)
-    time.sleep(0.1);
- #   processPupilMessagesLoop()
+
+    if (laserTargeting):
+        target = tracker.process_frame()
+        if (target):
+            turret_aim_at_target(target)
+       #     time.sleep(0.1)
+
+    if (not noEyeTracking):       
+        time.sleep(0.1)
+        processPupilMessagesLoop()
+
     
 ser.close()
